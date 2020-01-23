@@ -1,0 +1,63 @@
+#!/bin/bash
+
+set -e
+
+if [[ -z "${HELM_CHART_PATH}" ]]; then
+  echo "ERROR: must provide HELM_CHART_PATH pointing to airflow-*.tgz, will not release without an artifact."
+  exit 1
+fi
+
+# Common bash line that sets DIR to the directory of this script
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+REPO_DIR=$DIR/../
+
+# Wed don't need kubectl or kind, so
+# touching placeholders to skip
+# the installations.
+mkdir -p /tmp/bin
+touch /tmp/bin/kubectl
+touch /tmp/bin/kind
+source $DIR/install-ci-tools
+# Install other CLI tools for releasing
+sudo apt-get update > /dev/null
+sudo apt-get install -y tree > /dev/null
+
+# Set up the index.html file
+wget https://helm.astronomer.io/index.yaml -O /tmp/index.yaml.current
+
+# Ensure we have a new directory
+rm -rf /tmp/airflow-chart-release || true
+mkdir -p /tmp/airflow-chart-release
+cd /tmp/airflow-chart-release
+
+# Copy the artifact
+cp $HELM_CHART_PATH .
+
+# Unzip the artifact
+tar -xvzf $HELM_CHART_PATH -C .
+
+echo ""
+echo "========================="
+echo ""
+
+# show all the files that are in the unzipped artifact
+echo "Artifact contents:"
+tree ./airflow
+
+echo ""
+echo "========================="
+echo ""
+
+helm repo index ./airflow --url https://helm.astronomer.io --merge /tmp/index.yaml.current
+echo "Merging helm index with the current produced:"
+cat ./airflow/index.yaml
+
+echo ""
+echo "========================="
+echo ""
+echo "This is different than the existing index:"
+set -x
+diff /tmp/index.yaml.current ./airflow/index.yaml
+set +x
+echo ""
+ls
